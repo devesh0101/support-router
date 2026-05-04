@@ -1,2 +1,5 @@
 google-generativeai
 python-dotenv
+langgraph 
+langchain-google-genai 
+langchain-core

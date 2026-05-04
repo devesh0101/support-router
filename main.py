@@ -1,41 +1,7 @@
-import os
-import json
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-from prompts.classifier import CLASSIFIER_SYSTEM_PROMPT
-
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-
-def classify_ticket(ticket_text: str) -> dict:
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        config=types.GenerateContentConfig(
-            system_instruction=CLASSIFIER_SYSTEM_PROMPT,
-            temperature=0.2,
-        ),
-        contents=f"Support ticket:\n\n{ticket_text}"
-    )
-
-    raw_output = response.text.strip()
-
-    if raw_output.startswith("```"):
-        raw_output = raw_output.split("```")[1]
-        if raw_output.startswith("json"):
-            raw_output = raw_output[4:]
-        raw_output = raw_output.strip()
-
-    try:
-        result = json.loads(raw_output)
-    except json.JSONDecodeError:
-        print("Model returned invalid JSON:")
-        print(raw_output)
-        raise
-
-    return result
+from graph.graph import graph
 
 
 def main():
@@ -57,12 +23,22 @@ def main():
         return
 
     print("\nProcessing...\n")
-    result = classify_ticket(ticket)
 
-    print(f"Category:         {result['category'].upper()}")
-    print(f"Confidence:       {result['confidence_score']}")
-    print(f"Escalate:         {'YES' if result['escalate'] else 'NO'}")
-    print(f"\nDraft Reply:\n{result['draft_reply']}")
+    result = graph.invoke({
+        "ticket_text": ticket,
+        "messages": [],
+        "category": "",
+        "confidence_score": 0.0,
+        "escalate": False,
+        "draft_reply": "",
+        "final_response": ""
+    })
+
+    print(f"Category:    {result['category'].upper()}")
+    print(f"Confidence:  {result['confidence_score']}")
+    print(f"Escalated:   {'YES' if result['escalate'] else 'NO'}")
+    print(f"\n{'--- ESCALATION ---' if result['escalate'] else '--- Draft Reply ---'}")
+    print(result["final_response"])
 
 
 if __name__ == "__main__":
