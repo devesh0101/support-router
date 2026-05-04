@@ -96,3 +96,42 @@ def route_after_classify(state: TicketState) -> str:
     if state["escalate"] or state["confidence_score"] < 0.7:
         return "escalate"
     return "draft"
+
+
+def followup_node(state: TicketState) -> dict:
+    """Handles follow-up questions after initial classification."""
+    print("💬 Processing follow-up...\n")
+
+    # Build context summary for the model
+    context = f"""
+You are a helpful support assistant. You have already processed a support ticket.
+
+Here is what you know:
+- Original ticket: {state['ticket_text']}
+- Category: {state['category']}
+- Confidence score: {state['confidence_score']}
+- Escalation required: {state['escalate']}
+- Your drafted reply was: {state['draft_reply']}
+
+Now answer the user's follow-up question or fulfill their request.
+If they ask you to rewrite or improve the reply, return only the new reply text.
+If they ask a question, answer it directly and concisely.
+    """.strip()
+
+    messages = [SystemMessage(content=context)] + state["messages"]
+    response = llm.invoke(messages)
+
+    return {
+        "messages": [response],
+        "final_response": response.content.strip(),
+    }
+
+
+def route_entry(state: TicketState) -> str:
+    """
+    Routes to classify on first run.
+    Routes to followup if ticket already classified.
+    """
+    if state.get("category"):
+        return "followup"
+    return "classify"
