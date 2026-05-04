@@ -40,10 +40,16 @@ def main():
             "confidence_score": 0.0,
             "escalate": False,
             "draft_reply": "",
-            "final_response": ""
+            "final_response": "",
+            "retrieved_context": ""
         },
         config=config
     )
+
+    if result.get("retrieved_context"):
+        print("\n--- Retrieved Context ---")
+        print(result["retrieved_context"])
+        print("------------------------\n")
 
     print(f"Category:    {result['category'].upper()}")
     print(f"Confidence:  {result['confidence_score']}")

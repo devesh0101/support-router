@@ -5,6 +5,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from graph.state import TicketState
 from prompts.classifier import CLASSIFIER_SYSTEM_PROMPT
 
+from rag.embedder import embed_text
+from rag.vectorstore import search
+
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     temperature=0.2,
@@ -42,20 +45,58 @@ def classify_node(state: TicketState) -> dict:
     }
 
 
+def retrieve_node(state: TicketState) -> dict:
+    """Retrieves relevant support docs from Qdrant based on the ticket."""
+    print("📚 Retrieving relevant context...\n")
+
+    query_vector = embed_text(state["ticket_text"])
+    results = search(query_vector, top_k=3)
+
+    if not results:
+        return {"retrieved_context": "No relevant documentation found."}
+
+    # Format retrieved chunks into a readable context block
+    context_parts = []
+    for i, r in enumerate(results, 1):
+        context_parts.append(
+            f"[Source {i}: {r['source']} | Relevance: {r['score']:.2f}]\n{r['text']}"
+        )
+
+    context = "\n\n---\n\n".join(context_parts)
+    print(f"Retrieved {len(results)} relevant chunks.\n")
+
+    return {"retrieved_context": context}
+
 def draft_node(state: TicketState) -> dict:
-    """Refines the draft reply with full conversation context."""
-    print("✍️  Drafting response...")
+    """Drafts a reply grounded in retrieved documentation."""
+    print("✍️  Drafting response...\n")
+
+    context_section = ""
+    if state.get("retrieved_context"):
+        context_section = f"""
+Relevant documentation retrieved for this ticket:
+
+{state['retrieved_context']}
+
+Use the above documentation to ground your response. 
+Only use information present in the docs — do not invent policies or procedures.
+"""
 
     refinement_prompt = f"""
-    You previously classified this ticket as '{state['category']}' 
-    with confidence {state['confidence_score']}.
-    
-    Your draft reply was:
-    {state['draft_reply']}
-    
-    Review the conversation history and confirm this is the best response.
-    Return only the final reply text, no JSON, no explanation.
-    """
+You have classified this ticket as '{state['category']}' 
+with confidence {state['confidence_score']}.
+
+Your initial draft was:
+{state['draft_reply']}
+
+{context_section}
+
+Now write a final, polished reply to the customer.
+- Be empathetic and professional
+- Reference specific information from the documentation where relevant
+- Keep it concise — no more than 3-4 sentences
+- Return only the reply text, nothing else
+    """.strip()
 
     messages = state["messages"] + [HumanMessage(content=refinement_prompt)]
     response = llm.invoke(messages)
@@ -64,7 +105,6 @@ def draft_node(state: TicketState) -> dict:
         "messages": [response],
         "final_response": response.content.strip(),
     }
-
 
 def escalate_node(state: TicketState) -> dict:
     """Handles tickets that need human review."""

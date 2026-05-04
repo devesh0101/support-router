@@ -4,25 +4,22 @@ load_dotenv()
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from graph.state import TicketState
-
 from graph.nodes import (
     classify_node, draft_node, escalate_node,
-    route_after_classify, followup_node, route_entry
+    route_after_classify, followup_node,
+    route_entry, retrieve_node
 )
-
 
 
 def build_graph():
     builder = StateGraph(TicketState)
 
     builder.add_node("classify", classify_node)
+    builder.add_node("retrieve", retrieve_node)
     builder.add_node("draft", draft_node)
     builder.add_node("escalate", escalate_node)
     builder.add_node("followup", followup_node)
 
-    builder.set_entry_point("classify")
-
-    # Conditional entry — not set_entry_point anymore
     builder.set_conditional_entry_point(
         route_entry,
         {
@@ -31,20 +28,21 @@ def build_graph():
         }
     )
 
+    # After classification — escalate immediately or retrieve first
     builder.add_conditional_edges(
         "classify",
         route_after_classify,
         {
-            "draft": "draft",
+            "draft": "retrieve",   # retrieve before drafting
             "escalate": "escalate"
         }
     )
-    
+
+    builder.add_edge("retrieve", "draft")
     builder.add_edge("draft", END)
     builder.add_edge("escalate", END)
     builder.add_edge("followup", END)
 
-    # Attach memory checkpointer
     memory = MemorySaver()
     return builder.compile(checkpointer=memory)
 
