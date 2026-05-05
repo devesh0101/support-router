@@ -4,12 +4,11 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from langchain_core.messages import HumanMessage
 from graph.graph import graph
+from observability.judge import evaluate_response
 
 
 def run_ticket(ticket_text: str) -> dict:
-    """Run a single ticket through the full pipeline."""
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
@@ -30,35 +29,25 @@ def run_ticket(ticket_text: str) -> dict:
 
 
 def score_response(result: dict, test_case: dict) -> dict:
-    """
-    Score a response against expected outputs.
-    Returns a dict with individual scores and a total.
-    """
     scores = {}
 
-    # 1. Category match (0 or 1)
     scores["category_correct"] = int(
         result["category"] == test_case["expected_category"]
     )
 
-    # 2. Escalation match (0 or 1)
     scores["escalation_correct"] = int(
         result["escalate"] == test_case["should_escalate"]
     )
 
-    # 3. Keyword coverage — how many expected keywords appear in the reply
-    reply = result["final_response"].lower()
     keywords = test_case["expected_keywords"]
-    if keywords:
+    if keywords and not result["escalate"]:
+        reply = result["final_response"].lower()
         hits = sum(1 for kw in keywords if kw.lower() in reply)
         scores["keyword_coverage"] = round(hits / len(keywords), 2)
     else:
-        scores["keyword_coverage"] = None  # vague ticket, skip
+        scores["keyword_coverage"] = None
 
-    # 4. Confidence score (just record it, don't score it)
     scores["confidence"] = result["confidence_score"]
-
-    # 5. Has retrieved context (0 or 1)
     scores["has_rag_context"] = int(
         bool(result.get("retrieved_context")) and
         result["retrieved_context"] != "No relevant documentation found."
@@ -81,6 +70,15 @@ def run_evaluation():
         result = run_ticket(tc["ticket"])
         scores = score_response(result, tc)
 
+        # LLM-as-a-judge scoring
+        print(f"  🧑‍⚖️  Running judge evaluation...")
+        judge_scores = evaluate_response(
+            ticket=tc["ticket"],
+            reply=result["final_response"],
+            retrieved_context=result.get("retrieved_context", ""),
+            escalated=result["escalate"]
+        )
+
         results.append({
             "id": tc["id"],
             "ticket": tc["ticket"],
@@ -94,34 +92,52 @@ def run_evaluation():
             "keyword_coverage": scores["keyword_coverage"],
             "has_rag_context": scores["has_rag_context"],
             "final_response": result["final_response"],
-            "retrieved_context": result.get("retrieved_context", "")
+            "retrieved_context": result.get("retrieved_context", ""),
+            "judge_scores": judge_scores
         })
 
-        status = "✅" if scores["category_correct"] else "❌"
+        cat_status = "✅" if scores["category_correct"] else "❌"
         kw = f"{scores['keyword_coverage']:.0%}" if scores["keyword_coverage"] is not None else "N/A"
-        print(f"  {status} Category: {result['category']} | "
-              f"Escalate: {result['escalate']} | "
-              f"Keyword coverage: {kw} | "
-              f"RAG: {'yes' if scores['has_rag_context'] else 'no'}\n")
 
-    # Summary stats
+        if judge_scores["total"] is not None:
+            print(f"  {cat_status} Category: {result['category']} | "
+                  f"Keyword coverage: {kw} | "
+                  f"Judge score: {judge_scores['total']}/20")
+            print(f"     Reasoning: {judge_scores['reasoning']}\n")
+        else:
+            print(f"  {cat_status} Category: {result['category']} | "
+                  f"Escalated — judge skipped\n")
+
+    # Summary
     total = len(results)
     category_acc = sum(r["category_correct"] for r in results) / total
     escalation_acc = sum(r["escalation_correct"] for r in results) / total
+
     kw_results = [r["keyword_coverage"] for r in results if r["keyword_coverage"] is not None]
     avg_kw = sum(kw_results) / len(kw_results) if kw_results else 0
-    rag_coverage = sum(r["has_rag_context"] for r in results) / total
+
+    judge_results = [r["judge_scores"]["total"] for r in results if r["judge_scores"]["total"] is not None]
+    avg_judge = sum(judge_results) / len(judge_results) if judge_results else 0
+
+    # Per-dimension averages
+    dims = ["accuracy", "groundedness", "tone", "completeness"]
+    dim_avgs = {}
+    for dim in dims:
+        vals = [r["judge_scores"][dim] for r in results if r["judge_scores"][dim] is not None]
+        dim_avgs[dim] = round(sum(vals) / len(vals), 2) if vals else 0
 
     print("=" * 60)
     print("EVALUATION SUMMARY")
     print("=" * 60)
-    print(f"Total tickets:        {total}")
-    print(f"Category accuracy:    {category_acc:.0%}")
-    print(f"Escalation accuracy:  {escalation_acc:.0%}")
-    print(f"Avg keyword coverage: {avg_kw:.0%}")
-    print(f"RAG context rate:     {rag_coverage:.0%}")
+    print(f"Total tickets:          {total}")
+    print(f"Category accuracy:      {category_acc:.0%}")
+    print(f"Escalation accuracy:    {escalation_acc:.0%}")
+    print(f"Avg keyword coverage:   {avg_kw:.0%}")
+    print(f"Avg judge score:        {avg_judge:.1f}/20")
+    print(f"\nJudge breakdown:")
+    for dim, avg in dim_avgs.items():
+        print(f"  {dim.capitalize():<16} {avg}/5")
 
-    # Save full results to file
     with open("data/eval_results.json", "w") as f:
         json.dump(results, f, indent=2)
 
