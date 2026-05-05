@@ -1,0 +1,72 @@
+[
+  {
+    "id": 1,
+    "ticket": "I was charged twice for my subscription this month. I need a refund for the duplicate charge.",
+    "expected_category": "billing",
+    "expected_keywords": ["refund", "duplicate", "3-5 business days", "transaction"],
+    "should_escalate": false
+  },
+  {
+    "id": 2,
+    "ticket": "How do I export my data to CSV? I can't find the option anywhere in the settings.",
+    "expected_category": "technical",
+    "expected_keywords": ["Settings", "Export", "CSV", "download"],
+    "should_escalate": false
+  },
+  {
+    "id": 3,
+    "ticket": "I want to cancel my subscription and get a full refund for the entire year I paid.",
+    "expected_category": "refund",
+    "expected_keywords": ["30 days", "partial", "prorated", "annual"],
+    "should_escalate": false
+  },
+  {
+    "id": 4,
+    "ticket": "My login is not working. I reset my password but still can't get in.",
+    "expected_category": "technical",
+    "expected_keywords": ["SSO", "admin", "24 hours", "account"],
+    "should_escalate": false
+  },
+  {
+    "id": 5,
+    "ticket": "I am absolutely furious. I have been waiting 3 weeks for a response and nobody has helped me. I am filing a chargeback with my bank today.",
+    "expected_category": "billing",
+    "expected_keywords": ["escalate", "billing team", "chargeback"],
+    "should_escalate": true
+  },
+  {
+    "id": 6,
+    "ticket": "My payment failed and now my account is suspended. When will it be restored?",
+    "expected_category": "billing",
+    "expected_keywords": ["3 days", "retry", "suspended", "30 days"],
+    "should_escalate": false
+  },
+  {
+    "id": 7,
+    "ticket": "How many API requests can I make per hour on the free plan?",
+    "expected_category": "technical",
+    "expected_keywords": ["1000", "free plan", "rate limit"],
+    "should_escalate": false
+  },
+  {
+    "id": 8,
+    "ticket": "I upgraded my plan mid-month. Will I be charged the full amount?",
+    "expected_category": "billing",
+    "expected_keywords": ["prorated", "immediately", "credit", "upgrade"],
+    "should_escalate": false
+  },
+  {
+    "id": 9,
+    "ticket": "It's broken. Fix it.",
+    "expected_category": "technical",
+    "expected_keywords": [],
+    "should_escalate": true
+  },
+  {
+    "id": 10,
+    "ticket": "I purchased the product last week and it's not what I expected. I'd like a refund please.",
+    "expected_category": "refund",
+    "expected_keywords": ["30 days", "eligible", "original payment method"],
+    "should_escalate": false
+  }
+]
