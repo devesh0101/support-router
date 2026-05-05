@@ -1,12 +1,13 @@
 import os
 import json
+import time
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from graph.state import TicketState
 from prompts.classifier import CLASSIFIER_SYSTEM_PROMPT
-
 from rag.embedder import embed_text
 from rag.vectorstore import search
+from langfuse.decorators import observe
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
@@ -14,7 +15,7 @@ llm = ChatGoogleGenerativeAI(
     google_api_key=os.getenv("GEMINI_API_KEY")
 )
 
-
+@observe(name="classify")
 def classify_node(state: TicketState) -> dict:
     """Classifies the ticket and extracts structured data."""
     print("🔍 Classifying ticket...")
@@ -27,7 +28,6 @@ def classify_node(state: TicketState) -> dict:
     response = llm.invoke(messages)
     raw_output = response.content.strip()
 
-    # Strip markdown fences if present
     if raw_output.startswith("```"):
         raw_output = raw_output.split("```")[1]
         if raw_output.startswith("json"):
@@ -44,8 +44,9 @@ def classify_node(state: TicketState) -> dict:
         "draft_reply": result["draft_reply"],
     }
 
-
+@observe(name="retrieve")
 def retrieve_node(state: TicketState) -> dict:
+    """Retrieves relevant support docs from Qdrant based on the ticket."""
     print("📚 Retrieving relevant context...\n")
 
     query_vector = embed_text(state["ticket_text"])
@@ -63,9 +64,10 @@ def retrieve_node(state: TicketState) -> dict:
 
     context = "\n\n---\n\n".join(context_parts)
     print(f"Retrieved {len(results)} relevant chunks.\n")
+
     return {"retrieved_context": context}
 
-
+@observe(name="draft")
 def draft_node(state: TicketState) -> dict:
     """Drafts a reply grounded in retrieved documentation."""
     print("✍️  Drafting response...\n")
@@ -77,12 +79,12 @@ Relevant documentation retrieved for this ticket:
 
 {state['retrieved_context']}
 
-Use the above documentation to ground your response. 
+Use the above documentation to ground your response.
 Only use information present in the docs — do not invent policies or procedures.
-"""
+        """
 
     refinement_prompt = f"""
-You have classified this ticket as '{state['category']}' 
+You have classified this ticket as '{state['category']}'
 with confidence {state['confidence_score']}.
 
 Your initial draft was:
@@ -105,6 +107,7 @@ Now write a final, polished reply to the customer.
         "final_response": response.content.strip(),
     }
 
+@observe(name="escalate")
 def escalate_node(state: TicketState) -> dict:
     """Handles tickets that need human review."""
     print("🚨 Escalating to human agent...")
@@ -129,19 +132,11 @@ A human agent should review and respond to this ticket.
         "final_response": escalation_message,
     }
 
-
-def route_after_classify(state: TicketState) -> str:
-    """Decides which node to go to after classification."""
-    if state["escalate"] or state["confidence_score"] < 0.7:
-        return "escalate"
-    return "draft"
-
-
+@observe(name="followup")
 def followup_node(state: TicketState) -> dict:
     """Handles follow-up questions after initial classification."""
     print("💬 Processing follow-up...\n")
 
-    # Build context summary for the model
     context = f"""
 You are a helpful support assistant. You have already processed a support ticket.
 
@@ -166,11 +161,15 @@ If they ask a question, answer it directly and concisely.
     }
 
 
+def route_after_classify(state: TicketState) -> str:
+    """Decides which node to go to after classification."""
+    if state["escalate"] or state["confidence_score"] < 0.7:
+        return "escalate"
+    return "draft"
+
+
 def route_entry(state: TicketState) -> str:
-    """
-    Routes to classify on first run.
-    Routes to followup if ticket already classified.
-    """
+    """Routes to classify on first run, followup if ticket already classified."""
     if state.get("category"):
         return "followup"
     return "classify"
