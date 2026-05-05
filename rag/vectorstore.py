@@ -46,13 +46,14 @@ def upsert_documents(points: list[dict]):
     client.upsert(collection_name=COLLECTION_NAME, points=qdrant_points)
 
 
-def search(query_vector: list[float], top_k: int = 3) -> list[dict]:
+def search(query_vector: list[float], top_k: int = 3, min_score: float = 0.60) -> list[dict]:
     client = get_client()
     results = client.query_points(
         collection_name=COLLECTION_NAME,
         query=query_vector,
         limit=top_k,
-        with_payload=True
+        with_payload=True,
+        score_threshold=min_score
     )
     return [
         {

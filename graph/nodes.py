@@ -46,16 +46,15 @@ def classify_node(state: TicketState) -> dict:
 
 
 def retrieve_node(state: TicketState) -> dict:
-    """Retrieves relevant support docs from Qdrant based on the ticket."""
     print("📚 Retrieving relevant context...\n")
 
     query_vector = embed_text(state["ticket_text"])
     results = search(query_vector, top_k=3)
 
     if not results:
-        return {"retrieved_context": "No relevant documentation found."}
+        print("No high-relevance context found. Proceeding without RAG.\n")
+        return {"retrieved_context": ""}
 
-    # Format retrieved chunks into a readable context block
     context_parts = []
     for i, r in enumerate(results, 1):
         context_parts.append(
@@ -64,8 +63,8 @@ def retrieve_node(state: TicketState) -> dict:
 
     context = "\n\n---\n\n".join(context_parts)
     print(f"Retrieved {len(results)} relevant chunks.\n")
-
     return {"retrieved_context": context}
+
 
 def draft_node(state: TicketState) -> dict:
     """Drafts a reply grounded in retrieved documentation."""

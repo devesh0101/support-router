@@ -5,26 +5,42 @@ from pathlib import Path
 from rag.embedder import embed_batch
 from rag.vectorstore import create_collection_if_not_exists, upsert_documents
 from dotenv import load_dotenv
+import re
 
 load_dotenv()
 
 
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
-    """
-    Simple sliding window chunker.
-    chunk_size: characters per chunk
-    overlap: how many characters carry over to next chunk
-    Overlap prevents losing context at chunk boundaries.
-    """
-    chunks = []
-    start = 0
+import re
 
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        start = end - overlap
+def chunk_text(text: str, max_chunk_size: int = 600, overlap_sentences: int = 1) -> list[str]:
+    """
+    Sentence-aware chunker.
+    - Splits on sentence boundaries instead of raw character count
+    - Keeps section headers attached to their first sentence
+    - Overlaps by N sentences to preserve cross-boundary context
+    """
+    # Split into sentences (handles . ? ! and newlines)
+    sentences = re.split(r'(?<=[.!?])\s+|\n{2,}', text.strip())
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    chunks = []
+    current_chunk = []
+    current_length = 0
+
+    for sentence in sentences:
+        sentence_length = len(sentence)
+
+        if current_length + sentence_length > max_chunk_size and current_chunk:
+            chunks.append(" ".join(current_chunk))
+            # Keep last N sentences for overlap
+            current_chunk = current_chunk[-overlap_sentences:]
+            current_length = sum(len(s) for s in current_chunk)
+
+        current_chunk.append(sentence)
+        current_length += sentence_length
+
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
 
     return chunks
 
