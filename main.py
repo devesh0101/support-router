@@ -6,6 +6,11 @@ from langchain_core.messages import HumanMessage
 from graph.graph import graph
 from langfuse.decorators import observe, langfuse_context
 from observability.tracer import langfuse
+from observability.error_tracking import init_sentry, capture_exception
+from guardrails import process_input
+
+# Initialize Sentry at startup
+init_sentry()
 
 
 @observe(name="support-ticket-session")
@@ -54,17 +59,37 @@ def main():
             break
         lines.append(line)
 
-    ticket = "\n".join(lines)
+    raw_ticket = "\n".join(lines)
 
-    if not ticket.strip():
+    if not raw_ticket.strip():
         print("No ticket provided.")
         return
 
+    # Run guardrails before anything else
+    print("\n🛡️  Running security checks...\n")
+    processed_ticket, guard_report = process_input(raw_ticket)
+
+    if guard_report["blocked"]:
+        print(f"❌ Ticket blocked: {guard_report['block_reason']}")
+        print("This request cannot be processed.")
+        return
+
+    if guard_report["pii_redacted"]:
+        print(f"⚠️  PII detected and redacted: {', '.join(guard_report['pii_detected'])}")
+
     thread_id = str(uuid.uuid4())
 
-    print("\nProcessing...\n")
+    print("Processing...\n")
 
-    result = process_ticket(ticket, thread_id)
+    try:
+        result = process_ticket(processed_ticket, thread_id)
+    except Exception as e:
+        capture_exception(e, context={
+            "ticket": processed_ticket,
+            "thread_id": thread_id
+        })
+        print(f"An error occurred: {e}")
+        raise
 
     print(f"Category:    {result['category'].upper()}")
     print(f"Confidence:  {result['confidence_score']}")
@@ -90,8 +115,15 @@ def main():
         if not user_input:
             continue
 
+        # Guardrails on follow-ups too
+        processed_input, followup_report = process_input(user_input)
+
+        if followup_report["blocked"]:
+            print(f"❌ Message blocked: {followup_report['block_reason']}\n")
+            continue
+
         followup_result = graph.invoke(
-            {"messages": [HumanMessage(content=user_input)]},
+            {"messages": [HumanMessage(content=processed_input)]},
             config=config
         )
 
