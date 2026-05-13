@@ -40,6 +40,7 @@ huggingface_hub==1.13.0
 hyperframe==6.1.0
 idna==3.13
 importlib_metadata==8.7.1
+iniconfig==2.3.0
 Jinja2==3.1.6
 joblib==1.5.3
 jsonpatch==1.33
@@ -72,6 +73,7 @@ orjson==3.11.8
 ormsgpack==1.12.2
 packaging==24.2
 phonenumbers==9.0.30
+pluggy==1.6.0
 portalocker==3.2.0
 preshed==3.0.13
 presidio_analyzer==2.2.362
@@ -86,6 +88,7 @@ pydantic==2.13.3
 pydantic_core==2.46.3
 Pygments==2.20.0
 pyparsing==3.3.2
+pytest==9.0.3
 python-dotenv==1.2.2
 PyYAML==6.0.3
 qdrant-client==1.17.1
@@ -94,6 +97,7 @@ requests==2.33.1
 requests-file==3.0.1
 requests-toolbelt==1.0.0
 rich==15.0.0
+ruff==0.15.12
 safetensors==0.7.0
 scikit-learn==1.8.0
 scipy==1.17.1
